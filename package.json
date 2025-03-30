@@ -1,0 +1,47 @@
+{
+  "name": "rag-chatbot-cli",
+  "version": "1.0.0",
+  "description": "A CLI tool to interact with a RAG system using Supabase and OpenAI.",
+  "type": "module",
+  "bin": {
+    "ragchat": "bin/cli.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "chmod +x bin/cli.js"
+  },
+  "keywords": [
+    "rag",
+    "chatbot",
+    "cli",
+    "openai",
+    "supabase",
+    "vector-search",
+    "embeddings",
+    "nlp"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/rag-chatbot-cli.git"
+  },
+  "homepage": "https://github.com/yourusername/rag-chatbot-cli#readme",
+  "bugs": {
+    "url": "https://github.com/yourusername/rag-chatbot-cli/issues"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "boxen": "^8.0.1",
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "conf": "^13.1.0",
+    "inquirer": "^12.5.0",
+    "openai": "^4.90.0",
+    "ora": "^8.2.0"
+  }
+}

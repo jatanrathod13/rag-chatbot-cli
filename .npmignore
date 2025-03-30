@@ -1,0 +1,31 @@
+# Development files
+node_modules/
+.git/
+.github/
+.gitignore
+.vscode/
+*.log
+*.bak
+
+# Test files
+test/
+test_doc.txt
+*.test.js
+coverage/
+
+# Documentation files that don't need to be in the npm package
+docs/
+*.backup
+*.md.backup
+*.js.bak*
+
+# Environment files
+.env
+.env.*
+
+# Source maps
+*.map
+
+# Backup files
+*.orig
+*.rej 
