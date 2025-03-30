@@ -20,15 +20,15 @@
     "embeddings",
     "nlp"
   ],
-  "author": "Your Name <your.email@example.com>",
+  "author": "RAG Chatbot Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/rag-chatbot-cli.git"
+    "url": "https://github.com/jatanrathod/rag-chatbot-cli.git"
   },
-  "homepage": "https://github.com/yourusername/rag-chatbot-cli#readme",
+  "homepage": "https://github.com/jatanrathod/rag-chatbot-cli#readme",
   "bugs": {
-    "url": "https://github.com/yourusername/rag-chatbot-cli/issues"
+    "url": "https://github.com/jatanrathod/rag-chatbot-cli/issues"
   },
   "engines": {
     "node": ">=16"

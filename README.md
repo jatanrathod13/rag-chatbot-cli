@@ -84,4 +84,4 @@ MIT
 
 ## Support
 
-For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/yourusername/rag-chatbot-cli). 
+For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/jatanrathod/rag-chatbot-cli). 
