@@ -78,7 +78,6 @@ export async function checkDatabaseSetup() {
     const spinner = ora(chalk.blue('Checking database setup...')).start();
     const client = getSupabaseClient();
     const missing = [];
-    let checkError = null;
 
     try {
         // 1. Check for pgvector extension
@@ -86,71 +85,87 @@ export async function checkDatabaseSetup() {
         
         // Try to use the vector type (indirect check)
         try {
-            const { data: vectorTest, error: vectorTestError } = await client
-                .from('document_sections')
-                .select('embedding')
-                .limit(1);
+            // Try to use our test_vector_extension function if it exists
+            const { error: vectorTestError } = await client.rpc('test_vector_extension', {
+                test_array: Array(3).fill(0.1)
+            });
             
-            // If we can select from the embedding column, vector is likely working
-            if (vectorTestError && vectorTestError.message.includes('relation "document_sections" does not exist')) {
-                // Table doesn't exist yet, so we can't check this way
-                // We'll assume extension might be missing and check later
-                missing.push('vector extension (needs verification)');
-            } else if (vectorTestError && vectorTestError.message.includes('type "vector" does not exist')) {
-                missing.push('vector extension');
+            if (vectorTestError) {
+                // If we get an error, check if it's because the function doesn't exist
+                if (vectorTestError.message?.includes('function') && vectorTestError.message?.includes('does not exist')) {
+                    // Function doesn't exist, so the vector extension is likely not set up
+                    missing.push('vector extension');
+                } else {
+                    // Some other error, but the function exists - the vector extension might be installed
+                    console.log(chalk.yellow(`Warning: Error testing vector extension: ${vectorTestError.message}`));
+                }
             }
-        } catch (finalError) {
-            // If we've reached here, just mark it for manual check
-            console.log(chalk.yellow('Failed to check vector extension, marking for manual check...'));
-            missing.push('vector extension (needs manual check)');
+        } catch (vectorError) {
+            // Check using a direct table query as fallback
+            try {
+                const { error: docSectionError } = await client
+                    .from('document_sections')
+                    .select('embedding')
+                    .limit(1);
+                
+                if (docSectionError?.message?.includes('type "vector" does not exist')) {
+                    missing.push('vector extension');
+                } else if (docSectionError?.message?.includes('relation "document_sections" does not exist')) {
+                    // Table doesn't exist yet, so we'll check extension later
+                    missing.push('vector extension (needs verification)');
+                }
+            } catch (finalError) {
+                console.log(chalk.yellow('Failed to check vector extension, marking for verification...'));
+                missing.push('vector extension (needs verification)');
+            }
         }
 
         // 2. Check for documents table
         spinner.text = chalk.blue('Checking for documents table...');
         try {
-            const { data: directCheck, error: directError } = await client
+            const { error: directError } = await client
                 .from('documents')
                 .select('id')
                 .limit(1);
             
-            // If we can query it without error, it exists
-            if (directError && directError.message.includes('does not exist')) {
+            // If we get an error about the table not existing, add it to missing
+            if (directError?.message?.includes('does not exist')) {
                 missing.push('documents table');
             }
-        } catch (finalError) {
+        } catch (error) {
             missing.push('documents table (needs verification)');
         }
 
         // 3. Check for document_sections table
         spinner.text = chalk.blue('Checking for document_sections table...');
         try {
-            const { data: directCheck, error: directError } = await client
+            const { error: directError } = await client
                 .from('document_sections')
                 .select('id')
                 .limit(1);
             
-            // If we can query it without error, it exists
-            if (directError && directError.message.includes('does not exist')) {
+            // If we get an error about the table not existing, add it to missing
+            if (directError?.message?.includes('does not exist')) {
                 missing.push('document_sections table');
             }
-        } catch (finalError) {
+        } catch (error) {
             missing.push('document_sections table (needs verification)');
         }
 
         // 4. Check for match_document_sections function
         spinner.text = chalk.blue('Checking for match_document_sections function...');
         try {
-            const { data: rpcCheck, error: rpcError } = await client.rpc('match_document_sections', {
-                query_embedding: Array(1536).fill(0), // Dummy embedding
+            const { error: rpcError } = await client.rpc('match_document_sections', {
+                query_embedding: Array(1536).fill(0),
                 match_threshold: 0.5,
                 match_count: 1
             });
             
-            // If no error, or error is about not finding matches (but function exists), it's good
-            if (rpcError && rpcError.message.includes('function') && rpcError.message.includes('does not exist')) {
+            // Check if the error is about the function not existing
+            if (rpcError?.message?.includes('function') && rpcError?.message?.includes('does not exist')) {
                 missing.push('match_document_sections function');
             }
-        } catch (finalError) {
+        } catch (error) {
             missing.push('match_document_sections function (needs verification)');
         }
 
@@ -163,8 +178,8 @@ export async function checkDatabaseSetup() {
 
     } catch (error) {
         spinner.fail(chalk.red('Error checking database setup.'));
-        // Throw the specific check error if it was captured, otherwise the general error
-        throw checkError || error; 
+        // Just throw the general error since we're not capturing specific errors separately
+        throw error; 
     }
 }
 
@@ -175,41 +190,37 @@ export async function checkDatabaseSetup() {
  */
 export async function executeSetupSql() {
     const spinner = ora(chalk.blue('Reading setup SQL script...')).start();
-    const client = getSupabaseClient();
-    let sqlContent;
-
+    
     try {
-        sqlContent = await getSetupSql();
-        spinner.text = chalk.blue('Executing setup SQL script... (This might take a moment)');
+        const sqlContent = await getSetupSql();
+        spinner.text = chalk.blue('Checking database components...');
         
-        // In newer versions of Supabase client, sql() is available
-        // In older versions, we need to execute each statement separately
-        // using the REST API
+        // Check current database setup
+        const setupStatus = await checkDatabaseSetup();
         
-        // Split the SQL into individual statements
-        const statements = sqlContent.split(';')
-            .map(stmt => stmt.trim())
-            .filter(stmt => stmt.length > 0);
-        
-        // Execute each statement separately
-        for (let i = 0; i < statements.length; i++) {
-            spinner.text = chalk.blue(`Executing SQL statement ${i+1}/${statements.length}...`);
-            
-            // Use from() and then() chain to execute raw SQL
-            // This works with older Supabase client versions
-            const { error } = await client.from('_sqlapi').select('*').eq('query', statements[i]);
-            
-            if (error) {
-                // If this approach doesn't work, we'll need to fall back to manual instructions
-                console.warn(chalk.yellow(`Warning: Statement ${i+1} execution might have failed: ${error.message}`));
-                // Continue with other statements
-            }
+        if (setupStatus.allExist) {
+            spinner.succeed(chalk.green('Database setup completed successfully!'));
+            return true;
         }
-
-        spinner.succeed(chalk.green('Database setup script executed successfully!'));
-        return true;
+        
+        // We need to inform the user that we cannot automatically create the required components
+        spinner.info(chalk.cyan('Attempting to automatically create database components...'));
+        
+        // In this implementation, we know the anon key can't execute SQL directly
+        // So we're going to provide manual instructions
+        spinner.warn(chalk.yellow('Cannot automatically set up database components with the current permissions.'));
+        spinner.info(chalk.cyan('You\'ll need to manually run the SQL commands in your Supabase SQL Editor.'));
+        
+        // Display missing components
+        console.log(chalk.yellow('\nThe following components need to be created:'));
+        for (const item of setupStatus.missing) {
+            console.log(chalk.yellow(`- ${item}`));
+        }
+        
+        // Print the SQL content in the setupDb.js function
+        return false;
     } catch (error) {
-        spinner.fail(chalk.red('Error executing database setup script.'));
+        spinner.fail(chalk.red('Error during database setup:'));
         console.error(chalk.red(`Error details: ${error.message}`));
         return false;
     }
