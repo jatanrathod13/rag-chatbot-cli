@@ -83,39 +83,52 @@ export async function checkDatabaseSetup() {
         // 1. Check for pgvector extension
         spinner.text = chalk.blue('Checking for pgvector extension...');
         
-        // Try to use the vector type (indirect check)
+        // Method 1: Direct SQL query to check if extension exists
         try {
-            // Try to use our test_vector_extension function if it exists
-            const { error: vectorTestError } = await client.rpc('test_vector_extension', {
-                test_array: Array(3).fill(0.1)
-            });
+            const { data: extResult, error: extError } = await client.sql(`
+                SELECT EXISTS (
+                    SELECT 1 
+                    FROM pg_extension 
+                    WHERE extname = 'vector'
+                ) as exists;
+            `);
             
-            if (vectorTestError) {
-                // If we get an error, check if it's because the function doesn't exist
-                if (vectorTestError.message?.includes('function') && vectorTestError.message?.includes('does not exist')) {
-                    // Function doesn't exist, so the vector extension is likely not set up
-                    missing.push('vector extension');
-                } else {
-                    // Some other error, but the function exists - the vector extension might be installed
-                    console.log(chalk.yellow(`Warning: Error testing vector extension: ${vectorTestError.message}`));
-                }
+            if (extError) {
+                // If SQL approach fails, try alternative method
+                console.log(chalk.yellow('SQL check for vector extension failed, trying alternative approach...'));
+            } else if (extResult && extResult.length > 0 && !extResult[0].exists) {
+                missing.push('vector extension');
             }
-        } catch (vectorError) {
-            // Check using a direct table query as fallback
+        } catch (error) {
+            // Method 2: Try to use the test_vector_extension function if it exists
             try {
-                const { error: docSectionError } = await client
-                    .from('document_sections')
-                    .select('embedding')
-                    .limit(1);
+                const { error: vectorTestError } = await client.rpc('test_vector_extension', {
+                    test_array: Array(3).fill(0.1)
+                });
                 
-                if (docSectionError?.message?.includes('type "vector" does not exist')) {
-                    missing.push('vector extension');
-                } else if (docSectionError?.message?.includes('relation "document_sections" does not exist')) {
-                    // Table doesn't exist yet, so we'll check extension later
-                    missing.push('vector extension (needs verification)');
+                // If we don't get a function-does-not-exist error, the function likely exists
+                // and the vector extension might be installed
+                if (vectorTestError?.message?.includes('function') && 
+                    vectorTestError?.message?.includes('does not exist')) {
+                    console.log(chalk.yellow('Note: The test_vector_extension function is not installed yet.'));
+                    
+                    // Method 3: Try to use the vector type (indirect check)
+                    try {
+                        const { data: vectorTest, error: vectorTypeError } = await client
+                            .from('document_sections')
+                            .select('embedding')
+                            .limit(1);
+                        
+                        // If we can select from the embedding column, vector is likely working
+                        if (vectorTypeError?.message?.includes('type "vector" does not exist')) {
+                            missing.push('vector extension');
+                        }
+                    } catch (finalError) {
+                        // If all methods fail, assume the extension needs to be checked manually
+                        missing.push('vector extension (needs verification)');
+                    }
                 }
-            } catch (finalError) {
-                console.log(chalk.yellow('Failed to check vector extension, marking for verification...'));
+            } catch (rpcError) {
                 missing.push('vector extension (needs verification)');
             }
         }

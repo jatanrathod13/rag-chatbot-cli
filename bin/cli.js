@@ -38,6 +38,7 @@ program
 // 'setup-db' command
 program
     .command('setup-db')
+    .alias('db-setup')
     .description('Check and setup the required Supabase database components.')
     .action(runSetupDbCommand); // Direct action assignment
 
